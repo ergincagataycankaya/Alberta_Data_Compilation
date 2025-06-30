@@ -15,7 +15,7 @@ The `ABTreeMetrics` package provides the following utilities:
 
 - `calc_basal_area(dbh)` – basal area of a tree (m²).
 - `calc_qmd(dbh)` – quadratic mean diameter from a vector of DBH values.
-- `calc_volume(table, merch = "total")` – stem volume using the PGYI taper equations. Merchantability can be `"total"`, `"1307"` or `"1510"`.
+- `calc_volume(table, merch = "total")` – stem volume using the PGYI taper equations. Merchantability can be `"total"`, `"1307"`, `"1510"` or `"blank"`. Column names for species, height, dbh and natural subregion can be overridden.
 - `calc_biomass(species, dbh, height, vol_1307)` – estimate tree biomass.
 - `predict_height(dbh, species, natsub)` – estimate tree height from DBH.
 - `predict_dbh(height, species, natsub)` – estimate DBH from height.

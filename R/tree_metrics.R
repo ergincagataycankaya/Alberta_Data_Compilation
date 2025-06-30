@@ -105,18 +105,32 @@ segment_volume <- function(sl, stumpH, dbh, ht, a0, a1, a2, b1, b2, b3, b4, b5) 
 
 #' Calculate stem volume
 #'
-#' @param table Data table of tree measurements
-#' @param merch Merchantability rule: "total", "1307", or "1510"
+#' Provides a flexible wrapper around the PGYI taper equations.
+#'
+#' @param table  Data table containing tree measurements
+#' @param spp    Column name for species codes
+#' @param ht     Column name for tree height
+#' @param dbh    Column name for DBH
+#' @param natsub Column name for natural subregion
+#' @param merch  Merchantability rule: "total", "1307", "1510" or "blank"
 #' @param max_iter Maximum iterations for taper solution
 #' @return Numeric vector of volumes (m^3)
-calc_volume <- function(table, merch = "total", max_iter = 1000) {
-  df <- data.table::copy(data.table::as.data.table(table))
-  if (!all(c("dbh", "height", "species", "natural_subregion") %in% names(df))) {
-    stop("Missing required columns: dbh, height, species, natural_subregion")
+calc_volume <- function(table, spp = "species", ht = "height", dbh = "dbh",
+                        natsub = "natural_subregion", merch = "blank",
+                        max_iter = 1000) {
+  df <- data.table::as.data.table(table)
+  data.table::setnames(df, c(spp, ht, dbh, natsub),
+                       c("spp", "ht", "dbh", "natsub"), skip_absent = TRUE)
+
+  if (any(is.na(df$ht))) {
+    stop("Table contains missing heights.")
   }
-  if (any(is.na(df$height))) stop("Table contains missing heights.")
-  stumpH <- 0.3
-  if (merch == "total") {
+
+  if (merch == "blank") {
+    message("Merchantability not specified. Calculating total volume by default")
+    topdib <- 0.0125
+    merch <- "total"
+  } else if (merch == "total") {
     topdib <- 0.0125
   } else if (merch == "1307") {
     topdib <- 7
@@ -127,26 +141,51 @@ calc_volume <- function(table, merch = "total", max_iter = 1000) {
     stumpD <- 15
     minlen <- 3.66
   } else {
-    stop("Invalid merch parameter")
+    stop("Invalid merch parameter. Use 'total', '1307', or '1510'")
   }
-  params <- data.table::fread("GYPSY/GYPSY data/lookup/taper.csv")
-  df <- df[params, on = c(species = "species", natural_subregion = "natsub")]
+
+  stumpH <- 0.3
+  df[, spp := toupper(spp)]
+
+  spp_ref <- data.table::fread("GYPSY/GYPSY data/lookup/species.csv")
+  natsub_ref <- data.table::fread("GYPSY/GYPSY data/lookup/natsub.csv")
+
+  valid_spp <- spp_ref$species_og
+  if (any(!df$spp %in% valid_spp)) {
+    stop("Invalid species. Accepted codes are: ", paste(valid_spp, collapse = ", "))
+  }
+  valid_natsub <- natsub_ref$natural_subregion
+  if (any(!df$natsub %in% valid_natsub)) {
+    stop("Invalid natural subregion. Accepted codes are: ",
+         paste(valid_natsub, collapse = ", "))
+  }
+
+  df <- merge(df, spp_ref[, .(species_og, species)], by.x = "spp", by.y = "species_og")
+  df <- merge(df, natsub_ref, by.x = "natsub", by.y = "natural_subregion")
+
+  taper <- data.table::fread("GYPSY/GYPSY data/lookup/taper.csv")
+  df <- merge(df, taper, by = c("species", "natsub"), all.x = TRUE)
+
   hr_iter(df, topdib, max_iter)
-  df[dbh > topdib, dibs := dib(a0, a1, a2, b1, b2, b3, b4, b5, dbh, stumpH, height)]
+
+  df[dbh > topdib, dibs := dib(a0, a1, a2, b1, b2, b3, b4, b5, dbh, stumpH, ht)]
   df[dbh > topdib, dobs := k7 + k8 * dibs]
+
   if (merch == "total") {
-    df[, mh := height * r0]
+    df[, mh := ht * r0]
     df[, ml := mh - stumpH]
     df[, sl := ml / 20]
-    df[, vol := segment_volume(sl, stumpH, dbh, height, a0, a1, a2, b1, b2, b3, b4, b5)]
-    df[, tvol := vol + pi * (topdib/200)^2 * (height - mh)/3 + pi * (dibs/200)^2 * stumpH]
+    df[, vol := segment_volume(sl, stumpH, dbh, ht, a0, a1, a2, b1, b2, b3, b4, b5)]
+    df[, tvol := vol + pi * (topdib / 200)^2 * (ht - mh) / 3 +
+                 pi * (dibs / 200)^2 * stumpH]
     df[is.na(tvol), tvol := 0]
     df$tvol
   } else {
-    df[dobs > stumpD, mh := height * r0]
+    df[dobs > stumpD, mh := ht * r0]
     df[dobs > stumpD, ml := mh - stumpH]
     df[ml > minlen, sl := ml / 20]
-    df[ml > minlen, vol := segment_volume(sl, stumpH, dbh, height, a0, a1, a2, b1, b2, b3, b4, b5)]
+    df[ml > minlen, vol := segment_volume(sl, stumpH, dbh, ht, a0, a1, a2,
+                                          b1, b2, b3, b4, b5)]
     df[is.na(vol), vol := 0]
     df$vol
   }
