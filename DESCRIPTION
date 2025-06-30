@@ -1,0 +1,11 @@
+Package: ABTreeMetrics
+Type: Package
+Title: Alberta Tree Metrics
+Version: 0.1.0
+Authors@R: person("Alberta", "Team", email = "info@example.com", role = c("aut", "cre"))
+Description: Functions to calculate forest metrics for individual trees using the Alberta PGYI dataset.
+License: GPL-3
+Encoding: UTF-8
+LazyData: true
+Depends: R (>= 3.5)
+Imports: dplyr, data.table
